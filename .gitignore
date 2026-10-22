@@ -1,0 +1,7 @@
+config.json
+profile_*/
+recon_*/
+*.session
+*.session-journal
+.venv/
+__pycache__/

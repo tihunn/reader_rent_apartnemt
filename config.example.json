@@ -1,0 +1,7 @@
+{
+  "bot_token": "123456:ABC... (от @BotFather)",
+  "api_id": 1234567,
+  "api_hash": "0123456789abcdef0123456789abcdef",
+  "owner_id": 0,
+  "use_proxy": true
+}

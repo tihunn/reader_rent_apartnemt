@@ -1,0 +1,2 @@
+playwright==1.64.1
+telethon==1.45.0
