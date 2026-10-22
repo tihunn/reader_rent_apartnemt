@@ -2,6 +2,8 @@
 
 Запуск: python main.py          — с Telegram (нужен config.json)
         python main.py --dry    — без Telegram: только печатает новые сообщения в консоль
+Какие сайты включены — "sites" в config.json (по умолчанию все из SITE_CLASSES).
+Для --dry можно перечислить сайты: python main.py --dry domclick
 
 В Telegram: чтобы ответить человеку, ответь (reply) на пересланное ботом сообщение.
 Команды: /status — работает ли робот.
@@ -15,8 +17,10 @@ from telethon import events
 
 from bot_test import load_config, make_client
 from cian import Cian
+from domclick import Domclick
 
 HERE = Path(__file__).parent
+SITE_CLASSES = {"cian": Cian, "domclick": Domclick}
 LINKS_FILE = HERE / "state_links.json"   # id сообщения в Telegram -> (сайт, чат)
 
 
@@ -28,14 +32,26 @@ def fmt(msg):
     return f"{head}\n👤 {msg['who']}\n\n{body}\n\n{msg['url']}"
 
 
-async def run_dry():
+async def keep_running(site, on_alert):
+    """Если сайт упал (браузер закрыли, сеть пропала), перезапускаем его через минуту."""
+    while True:
+        try:
+            await site.run()
+        except Exception as e:
+            print(f"[{site.name}] упал: {e}")
+            await on_alert(f"{site.name.upper()}: робот упал ({e}), перезапускаю через минуту.")
+        await asyncio.sleep(60)
+
+
+async def run_dry(names):
     async def on_message(msg):
         print("\n=== НОВОЕ ===\n" + fmt(msg))
 
     async def on_alert(text):
         print("\n!!! " + text)
 
-    await Cian(HERE / "profile_cian", HERE / "state_cian.json", on_message, on_alert).run()
+    sites = [SITE_CLASSES[n](HERE, on_message, on_alert) for n in names]
+    await asyncio.gather(*(keep_running(s, on_alert) for s in sites))
 
 
 async def run_bot():
@@ -72,11 +88,15 @@ async def run_bot():
         ok = await sites[site].send(chat_id, event.raw_text)
         await event.reply("✅ отправлено" if ok else "❌ не отправилось, проверь браузер на сервере")
 
-    cian = Cian(HERE / "profile_cian", HERE / "state_cian.json", on_message, on_alert)
-    sites["cian"] = cian
-    await client.send_message(owner, "🤖 Робот запущен.")
-    await asyncio.gather(cian.run(), client.run_until_disconnected())
+    for n in cfg.get("sites") or list(SITE_CLASSES):
+        sites[n] = SITE_CLASSES[n](HERE, on_message, on_alert)
+    await client.send_message(owner, "🤖 Робот запущен: " + ", ".join(sites))
+    await asyncio.gather(*(keep_running(s, on_alert) for s in sites.values()),
+                         client.run_until_disconnected())
 
 
 if __name__ == "__main__":
-    asyncio.run(run_dry() if "--dry" in sys.argv else run_bot())
+    if "--dry" in sys.argv:
+        asyncio.run(run_dry([a for a in sys.argv[1:] if a in SITE_CLASSES] or list(SITE_CLASSES)))
+    else:
+        asyncio.run(run_bot())

@@ -9,9 +9,8 @@ import asyncio
 import json
 import time
 import uuid
-from pathlib import Path
 
-from playwright.async_api import async_playwright
+from sitebase import SiteBase, async_playwright
 
 DIALOGS_URL = "https://www.cian.ru/dialogs/"
 CHATS_GET = "https://chats.cian.ru/chats/v3/web/chats/get/"
@@ -35,15 +34,6 @@ INIT_SCRIPT = """
 })();
 """ % WS_PART
 
-FETCH_JS = """
-async ([url, method, body]) => {
-  const opts = {method, credentials: 'include', headers: {}};
-  if (body !== null) { opts.headers['content-type'] = 'application/json'; opts.body = body; }
-  const r = await fetch(url, opts);
-  return {status: r.status, text: await r.text()};
-}
-"""
-
 SEND_JS = """
 ([frame]) => {
   const open = (window.__cianChatWs || []).filter(w => w.readyState === 1);
@@ -54,54 +44,12 @@ SEND_JS = """
 """
 
 
-class Cian:
-    """on_message(msg: dict) вызывается для каждого нового чужого сообщения.
-    msg: site, chat_id, message_id, text, kind, user_id, title, url
-    on_alert(text) — когда нужна помощь человека (выкинуло из аккаунта и т. п.)."""
-
+class Cian(SiteBase):
     name = "cian"
 
-    def __init__(self, profile_dir: Path, state_file: Path, on_message, on_alert, headless=False):
-        self.profile_dir = profile_dir
-        self.state_file = state_file
-        self.on_message = on_message
-        self.on_alert = on_alert
-        self.headless = headless
-        self.page = None
-        self.my_id = None
-        self.chats = {}          # chat_id -> карточка чата (заголовок, ссылка)
-        self.seen = set()        # message_id, которые уже обработаны
-        self._alerted = False
-        self._load_state()
-
-    # ---------- состояние ----------
-
-    def _load_state(self):
-        if self.state_file.exists():
-            st = json.loads(self.state_file.read_text(encoding="utf-8"))
-            self.seen = set(st.get("seen", []))
-            self.my_id = st.get("my_id")
-
-    def _save_state(self):
-        seen = list(self.seen)[-5000:]
-        self.state_file.write_text(json.dumps({"seen": seen, "my_id": self.my_id}), encoding="utf-8")
-
-    # ---------- запросы из страницы ----------
-
-    async def _fetch(self, url, method="GET", body=None):
-        r = await self.page.evaluate(FETCH_JS, [url, method, None if body is None else json.dumps(body)])
-        if r["status"] in (401, 403):
-            await self._alert("ЦИАН не пускает (код %s). Похоже, выкинуло из аккаунта: зайди в браузер на сервере и войди." % r["status"])
-            return None
-        if r["status"] != 200:
-            print(f"[cian] {method} {url} -> {r['status']}")
-            return None
-        return json.loads(r["text"]) if r["text"] else {}
-
-    async def _alert(self, text):
-        if not self._alerted:
-            self._alerted = True
-            await self.on_alert(f"ЦИАН: {text}")
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self.chats = {}          # chat_id -> карточка чата (кто, объявление, ссылка)
 
     # ---------- чаты ----------
 
@@ -125,21 +73,20 @@ class Cian:
         if not mid or mid in self.seen:
             return
         self.seen.add(mid)
-        self._save_state()
+        self.save_state()
         if self.my_id and m.get("userId") == self.my_id:
             return  # своё сообщение (отправленное с сайта или нами)
         cid = m.get("chatId")
         if cid not in self.chats:
             await self.poll()
         info = self.chats.get(cid, {})
-        files = m.get("files") or []
         await self.on_message({
             "site": self.name,
             "chat_id": cid,
             "message_id": mid,
             "text": m.get("text") or "",
             "kind": m.get("type"),
-            "files": len(files),
+            "files": len(m.get("files") or []),
             "user_id": m.get("userId"),
             "who": info.get("who", ""),
             "title": info.get("card", ""),
@@ -148,10 +95,10 @@ class Cian:
 
     async def poll(self, first=False):
         """Проверка списком чатов: на случай, если websocket что-то пропустил."""
-        data = await self._fetch(CHATS_GET, "POST", {"limit": 25, "status": "active"})
+        data = await self.fetch(CHATS_GET, "POST", {"limit": 25, "status": "active"})
         if data is None:
             return
-        self._alerted = False
+        self.clear_alert()
         for chat in data.get("chats", []):
             self._remember_chat(chat)
         for chat in data.get("chats", []):
@@ -164,7 +111,7 @@ class Cian:
             if first and not chat.get("unreadMessagesCount"):
                 self.seen.add(last["messageId"])   # старое и уже прочитанное — не пересылаем
                 continue
-            hist = await self._fetch(HISTORY.format(chat_id=chat["chatId"]))
+            hist = await self.fetch(HISTORY.format(chat_id=chat["chatId"]))
             msgs = sorted((hist or {}).get("messages", []), key=lambda x: x.get("created", ""))
             if first:
                 # при запуске пересылаем только непрочитанные, остальное считаем старым
@@ -174,7 +121,7 @@ class Cian:
                 msgs = keep
             for m in msgs:
                 await self._handle_message(m)
-        self._save_state()
+        self.save_state()
 
     # ---------- отправка ----------
 
@@ -190,7 +137,7 @@ class Cian:
             await asyncio.sleep(5)
             ok = await self.page.evaluate(SEND_JS, [frame])
         if ok:
-            await self._fetch(MARK_READ, "POST", {"chatId": chat_id})
+            await self.fetch(MARK_READ, "POST", {"chatId": chat_id})
         return ok
 
     # ---------- запуск ----------
@@ -213,16 +160,12 @@ class Cian:
 
     async def run(self):
         async with async_playwright() as p:
-            ctx = await p.chromium.launch_persistent_context(
-                self.profile_dir, channel="chrome", headless=self.headless, viewport=None,
-                args=["--disable-blink-features=AutomationControlled"])
-            await ctx.add_init_script(INIT_SCRIPT)
-            self.page = ctx.pages[0] if ctx.pages else await ctx.new_page()
+            await self.launch(p, INIT_SCRIPT)
             self.page.on("websocket", self._on_ws)
             await self.page.goto(DIALOGS_URL)
             await asyncio.sleep(3)
             if "dialogs" not in self.page.url:
-                await self._alert("не открылась страница сообщений, наверное нужно войти в аккаунт.")
+                await self.alert("не открылась страница сообщений, наверное нужно войти в аккаунт.")
             await self.poll(first=True)
             print(f"[cian] работаю, мой id {self.my_id}, чатов {len(self.chats)}")
             last_reload = time.time()
