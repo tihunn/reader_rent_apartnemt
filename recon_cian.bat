@@ -6,5 +6,5 @@ if not exist .venv\Scripts\python.exe (
   pause
   exit /b 1
 )
-.venv\Scripts\python.exe recon_cian.py
+.venv\Scripts\python.exe recon.py cian
 pause
