@@ -19,19 +19,24 @@
 
 Как понять, что пришло новое: у чата растёт `rowVersion`, а у `lastMessage.userId` стоит не мой id. Мой `userId` = `offer.userId` (владелец объявления).
 
-## Websocket — частично
+## Websocket — всё идёт через него
 
-`wss://wss.cian.ru/chats/v5/endpoint-desktop/`
+`wss://wss.cian.ru/chats/v5/endpoint-desktop/` (сайт открывает несколько таких сокетов, события дублируются — фильтровать по `messageId`).
 
-Видели только статусы «в сети»:
-- от сайта: `{"type":"status","uid":"<uuid>","userId":<мой id>,"requestedUserIds":[<id собеседника>],"action":"subscribe"}`
-- в ответ: `{"type":"status","status":{"userId":<id>,"lastActionDatetime":"..."}}`
+| Событие | Пример |
+|---|---|
+| новое сообщение (и чужое, и своё) | `{"type":"message","message":{"messageId","chatId","userId","created","status":"deliveredToServer","type":"text","text"}}` |
+| сообщение прочитано | то же, но `"status":"readByRecipient"` |
+| изменился чат | `{"chat":{ ...как в списке чатов... }}` |
+| счётчик непрочитанных | `{"type":"unread","unread":1}` |
+| статус «в сети» | `{"type":"status","status":{"userId","lastActionDatetime"}}` |
 
-Событие о новом сообщении в записи не попалось, потому что за время записи никто не написал.
+**Отправка** (от сайта в сокет):
+`{"type":"message","message":{"chatId":"offer_…","text":"да","reply":null},"uid":"<новый uuid>","userId":<мой id>}`
 
-## Отправка — не найдено
+**Отметить прочитанным:** `POST https://chats.cian.ru/chats/v1/messages/read/`, тело `{"chatId":"offer_…"}`.
 
-В записи нет ни одной отправки. Нужна ещё одна запись, в которой ты отправишь сообщение в чат.
+Робот подменяет `window.WebSocket` скриптом при загрузке страницы, запоминает сокеты чатов сайта и отправляет через них (`cian.py`).
 
 ## План робота
 

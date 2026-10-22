@@ -5,3 +5,4 @@ recon_*/
 *.session-journal
 .venv/
 __pycache__/
+state_*.json
