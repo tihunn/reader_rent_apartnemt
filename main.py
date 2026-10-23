@@ -18,9 +18,10 @@ from telethon import events
 from bot_test import load_config, make_client
 from cian import Cian
 from domclick import Domclick
+from yandex import Yandex
 
 HERE = Path(__file__).parent
-SITE_CLASSES = {"cian": Cian, "domclick": Domclick}
+SITE_CLASSES = {"cian": Cian, "domclick": Domclick, "yandex": Yandex}
 LINKS_FILE = HERE / "state_links.json"   # id сообщения в Telegram -> (сайт, чат)
 
 
