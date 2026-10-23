@@ -3,21 +3,20 @@
 Как устроены чаты — docs/cian_chat_api.md. Коротко:
 - новые сообщения приходят по websocket сайта событием {"type": "message"};
 - отправка — тот же websocket, сообщение {"type": "message", "message": {"chatId", "text"}};
-- на случай обрыва раз в POLL_SEC проверяем список чатов обычным запросом.
+- на случай обрыва раз в 10–50 минут (случайно, sitebase.poll_delay) проверяем список чатов обычным запросом.
 """
 import asyncio
 import json
 import time
 import uuid
 
-from sitebase import SiteBase, async_playwright
+from sitebase import SiteBase, async_playwright, poll_delay
 
 DIALOGS_URL = "https://www.cian.ru/dialogs/"
 CHATS_GET = "https://chats.cian.ru/chats/v3/web/chats/get/"
 HISTORY = "https://chats.cian.ru/chats/v3/web/history/messages/?chatId={chat_id}&limit=50"
 MARK_READ = "https://chats.cian.ru/chats/v1/messages/read/"
 WS_PART = "wss.cian.ru/chats"
-POLL_SEC = 60
 
 # Запоминаем сокеты чатов, которые открывает сам сайт: через них и отправляем.
 INIT_SCRIPT = """
@@ -170,7 +169,7 @@ class Cian(SiteBase):
             print(f"[cian] работаю, мой id {self.my_id}, чатов {len(self.chats)}")
             last_reload = time.time()
             while True:
-                await asyncio.sleep(POLL_SEC)
+                await asyncio.sleep(poll_delay())
                 try:
                     if time.time() - last_reload > 3 * 3600:   # раз в 3 часа освежаем страницу
                         await self.page.reload()

@@ -7,12 +7,23 @@
 site, chat_id, message_id, text, kind, files, user_id, who, title, url.
 """
 import json
+import random
 from pathlib import Path
 
 from playwright.async_api import async_playwright
 
 # Признаки «тебя выкинуло из аккаунта» в ответах сайтов (ЦИАН при этом отвечает 400, а не 401)
 LOGGED_OUT_HINTS = ("X-Real-UserId", "авториз", "Unauthorized", "not authenticated")
+
+
+# Проверка списком чатов — только страховка: новые сообщения и так приходят по websocket сразу.
+# Делаем её редко и в случайное время, чтобы не выглядеть роботом: 30 ± 20 минут.
+POLL_MIN_SEC = 10 * 60
+POLL_MAX_SEC = 50 * 60
+
+
+def poll_delay():
+    return random.uniform(POLL_MIN_SEC, POLL_MAX_SEC)
 
 
 class SiteBase:
@@ -85,4 +96,4 @@ class SiteBase:
         raise NotImplementedError
 
 
-__all__ = ["SiteBase", "async_playwright"]
+__all__ = ["SiteBase", "async_playwright", "poll_delay"]

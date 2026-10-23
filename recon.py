@@ -24,14 +24,17 @@ HERE = Path(__file__).parent
 SITES = {
     "cian": ("https://www.cian.ru/", "cian"),
     "domclick": ("https://domclick.ru/", "domclick"),
+    "yandex": ("https://realty.yandex.ru/", "yandex"),
 }
 MAX_BODY = 300_000
 # что не интересно: картинки, счётчики, реклама
-SKIP = ("yandex", "google", "mc.", "top-fwz", "adfox", "sentry", "metrika", ".png", ".jpg", ".svg", ".woff")
+SKIP = ("yandex", "google", "mc.", "top-fwz", "adfox", "sentry", "metrika", "strm.yandex", "an.yandex",
+        "yastatic", "avatars.mds", ".png", ".jpg", ".svg", ".woff")
 
 
 async def main(site):
     start_url, domain = SITES[site]
+    skip = [s for s in SKIP if s != domain]   # для Яндекса сам «yandex» не отбрасываем
     PROFILE = HERE / f"profile_{site}"
     OUT = HERE / f"recon_{site}"
     OUT.mkdir(exist_ok=True)
@@ -46,7 +49,7 @@ async def main(site):
     async def on_response(resp):
         nonlocal count
         url = resp.url
-        if domain not in urlparse(url).netloc or any(s in url for s in SKIP):
+        if domain not in urlparse(url).netloc or any(s in url for s in skip):
             return
         if resp.request.resource_type not in ("xhr", "fetch"):
             return

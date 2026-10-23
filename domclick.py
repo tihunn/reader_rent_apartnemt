@@ -4,7 +4,7 @@
 - новые сообщения приходят по websocket (Centrifugo), канал auth-chat:individual#<мой casId>,
   событие {"action": "add", "data": {"message": {...}, "room": {...}}};
 - отправка — POST .../rooms/<комната>/messages, прочитано — PATCH туда же;
-- на случай обрыва раз в POLL_SEC проверяем комнаты с непрочитанными.
+- на случай обрыва раз в 10–50 минут (случайно, sitebase.poll_delay) проверяем комнаты с непрочитанными.
 """
 import asyncio
 import json
@@ -12,13 +12,12 @@ import secrets
 import time
 import uuid
 
-from sitebase import SiteBase, async_playwright
+from sitebase import SiteBase, async_playwright, poll_delay
 
 START_URL = "https://domclick.ru/"
 ME = "https://api.domclick.ru/auth/me"
 API = "https://ipoteka.domclick.ru/chat/api/v3"
 WS_PART = "soba.domclick.ru"
-POLL_SEC = 60
 
 
 def reqid():
@@ -138,7 +137,7 @@ class Domclick(SiteBase):
             print(f"[domclick] работаю, мой id {self.my_id}, комнат {len(self.rooms)}")
             last_reload = time.time()
             while True:
-                await asyncio.sleep(POLL_SEC)
+                await asyncio.sleep(poll_delay())
                 try:
                     if time.time() - last_reload > 3 * 3600:
                         await self.page.reload()
