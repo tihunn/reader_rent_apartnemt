@@ -1,31 +1,37 @@
 @echo off
 chcp 65001 >nul
 cd /d "%~dp0"
-rem Ставит всё нужное в папку .venv рядом со скриптом. Запускать один раз после git clone/pull.
+rem Ставит всё нужное рядом со скриптом. Запускать после git clone и после каждого git pull.
+rem Системный Python не нужен и не трогается: uv сам скачает Python нужной версии в tools\python,
+rem создаст .venv на нём и поставит туда пакеты. PATH и реестр не меняются.
 
-set PY=
-rem Проверяем кандидатов запуском: у py бывают записи на удалённые установки.
-for %%C in ("python" "%ProgramFiles%\Python314\python.exe" "%ProgramFiles%\Python313\python.exe" "%ProgramFiles%\Python312\python.exe") do (
-  if not defined PY (
-    "%%~C" -c "import sys; assert sys.version_info >= (3, 10)" >nul 2>nul && set PY="%%~C"
+set PYVER=3.13
+set "TOOLS=%~dp0tools"
+set "UV=%TOOLS%\uv.exe"
+set "UV_PYTHON_INSTALL_DIR=%TOOLS%\python"
+set "UV_CACHE_DIR=%TOOLS%\cache"
+set UV_PYTHON_PREFERENCE=only-managed
+
+if not exist "%UV%" (
+  echo Качаю uv ...
+  if not exist "%TOOLS%" mkdir "%TOOLS%"
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; Invoke-WebRequest -UseBasicParsing 'https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip' -OutFile '%TOOLS%\uv.zip'; Expand-Archive -Force '%TOOLS%\uv.zip' '%TOOLS%'; Remove-Item '%TOOLS%\uv.zip'" || goto :fail
+)
+
+echo Ставлю Python %PYVER% в tools\python ...
+"%UV%" python install %PYVER% || goto :fail
+
+rem Если .venv собран на другой версии Python — пересобираем
+if exist .venv\pyvenv.cfg (
+  findstr /c:"version_info = %PYVER%." .venv\pyvenv.cfg >nul || (
+    echo .venv на другой версии Python, пересоздаю ...
+    rmdir /s /q .venv
   )
 )
-if not defined PY (
-  py -3 -c "import sys; assert sys.version_info >= (3, 10)" >nul 2>nul && set PY=py -3
-)
-if not defined PY (
-  echo Не нашёл рабочий Python 3.10+. Поставь его с python.org и запусти снова.
-  pause
-  exit /b 1
-)
-echo Python: %PY%
-
 if not exist .venv\Scripts\python.exe (
-  echo Создаю .venv ...
-  %PY% -m venv .venv || goto :fail
+  "%UV%" venv --python %PYVER% .venv || goto :fail
 )
-.venv\Scripts\python.exe -m pip install --upgrade pip || goto :fail
-.venv\Scripts\python.exe -m pip install -r requirements.txt || goto :fail
+"%UV%" pip install --python .venv\Scripts\python.exe -r requirements.txt || goto :fail
 
 rem Робот открывает обычный Google Chrome. Если Chrome нет — ставим браузер Playwright.
 if not exist "%ProgramFiles%\Google\Chrome\Application\chrome.exe" if not exist "%LocalAppData%\Google\Chrome\Application\chrome.exe" (
@@ -38,6 +44,7 @@ if not exist config.json (
   echo Создан config.json — впиши в него токен бота, api_id и api_hash.
 )
 echo.
+.venv\Scripts\python.exe --version
 echo Готово.
 pause
 exit /b 0
