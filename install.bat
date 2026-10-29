@@ -12,10 +12,21 @@ set "UV_PYTHON_INSTALL_DIR=%TOOLS%\python"
 set "UV_CACHE_DIR=%TOOLS%\cache"
 set UV_PYTHON_PREFERENCE=only-managed
 
+set "UV_URL=https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip"
 if not exist "%UV%" (
   echo Качаю uv ...
   if not exist "%TOOLS%" mkdir "%TOOLS%"
-  powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; Invoke-WebRequest -UseBasicParsing 'https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-pc-windows-msvc.zip' -OutFile '%TOOLS%\uv.zip'; Expand-Archive -Force '%TOOLS%\uv.zip' '%TOOLS%'; Remove-Item '%TOOLS%\uv.zip'" || goto :fail
+  rem Сначала встроенным PowerShell, если его нет — встроенными curl.exe и tar.exe (Windows 10 1803+)
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; Invoke-WebRequest -UseBasicParsing '%UV_URL%' -OutFile '%TOOLS%\uv.zip'; Expand-Archive -Force '%TOOLS%\uv.zip' '%TOOLS%'" 2>nul
+  if not exist "%UV%" (
+    curl.exe -L -f -o "%TOOLS%\uv.zip" "%UV_URL%" && tar.exe -xf "%TOOLS%\uv.zip" -C "%TOOLS%"
+  )
+  if exist "%TOOLS%\uv.zip" del "%TOOLS%\uv.zip"
+  if not exist "%UV%" (
+    echo Не получилось скачать uv. Скачай руками этот файл и распакуй uv.exe в папку tools:
+    echo %UV_URL%
+    goto :fail
+  )
 )
 
 echo Ставлю Python %PYVER% в tools\python ...
