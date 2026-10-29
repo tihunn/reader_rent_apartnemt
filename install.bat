@@ -19,7 +19,8 @@ if not exist "%UV%" (
   rem Сначала встроенным PowerShell, если его нет — встроенными curl.exe и tar.exe (Windows 10 1803+)
   powershell -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; Invoke-WebRequest -UseBasicParsing '%UV_URL%' -OutFile '%TOOLS%\uv.zip'; Expand-Archive -Force '%TOOLS%\uv.zip' '%TOOLS%'" 2>nul
   if not exist "%UV%" (
-    curl.exe -L -f -o "%TOOLS%\uv.zip" "%UV_URL%" && tar.exe -xf "%TOOLS%\uv.zip" -C "%TOOLS%"
+    rem полные пути: в PATH может стоять чужой tar (например, из Git), который не понимает C:\
+    "%SystemRoot%\System32\curl.exe" -L -f -o "%TOOLS%\uv.zip" "%UV_URL%" && "%SystemRoot%\System32\tar.exe" -xf "%TOOLS%\uv.zip" -C "%TOOLS%"
   )
   if exist "%TOOLS%\uv.zip" del "%TOOLS%\uv.zip"
   if not exist "%UV%" (
